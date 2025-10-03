@@ -9,6 +9,7 @@ from tqdm import tqdm
 from PIL import Image
 from lib.utils.tools import ensure_dir
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from lib.utils.utils_smpl import *
@@ -328,6 +329,7 @@ def motion2video_mesh(motion, save_path, fps=25, keep_imgs = False, draw_face=Tr
                 xs, ys, zs = [np.array([j3d[limb[0], j], j3d[limb[1], j]]) for j in range(3)]
                 ax.plot(-xs, -zs, -ys, c=[0,0,0], lw=3, marker='o', markerfacecolor='w', markersize=3, markeredgewidth=2) # axis transformation for visualization
         elif draw_face:
+            # todo: this will cause segment fault errors
             ax.plot_trisurf(j3d[:, 0], j3d[:, 1], triangles=smpl_faces, Z=j3d[:, 2], color=(166/255.0,188/255.0,218/255.0,0.9))
         else:
             ax.scatter(j3d[:, 0], j3d[:, 1], j3d[:, 2], s=3, c='w', edgecolors='grey')

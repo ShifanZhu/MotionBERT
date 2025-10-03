@@ -153,5 +153,5 @@ if opts.ref_3d_motion_path:
     root_cam = ref_pose[:, :1] * scale
     verts_all = verts_all - reg3d_all[:,:1] + root_cam
 
-render_and_save(verts_all, osp.join(opts.out_path, 'mesh.mp4'), keep_imgs=False, fps=fps_in, draw_face=True)
+render_and_save(verts_all, osp.join(opts.out_path, 'mesh.mp4'), keep_imgs=False, fps=fps_in, draw_face=False)
 

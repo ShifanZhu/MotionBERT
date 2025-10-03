@@ -26,6 +26,8 @@ from lib.data.augmentation import Augmenter2D
 from lib.data.datareader_h36m import DataReaderH36M  
 from lib.model.loss import *
 
+import wandb
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="configs/pretrain.yaml", help="Path to the config file.")
@@ -79,8 +81,15 @@ def evaluate(args, model_pos, test_loader, datareader):
 
             if args.gt_2d:
                 predicted_3d_pos[...,:2] = batch_input[...,:2]
-            results_all.append(predicted_3d_pos.cpu().numpy())
-    results_all = np.concatenate(results_all)
+            # results_all.extend(predicted_3d_pos.detach().cpu().numpy())
+            # results_all.append(predicted_3d_pos[0].detach().cpu().numpy())
+            pred_np = predicted_3d_pos.detach().cpu().numpy()  # (N, T, 17, 3)
+            for i in range(pred_np.shape[0]):  # iterate over batch dimension
+                results_all.append(pred_np[i])  # each is (T, 17, 3)
+  
+    # results_all = np.concatenate(results_all)
+    # results_all = datareader.denormalize(results_all)
+    results_all = np.stack(results_all, axis=0)  # (num_clips, T, 17, 3)
     results_all = datareader.denormalize(results_all)
     _, split_id_test = datareader.get_split_id()
     actions = np.array(datareader.dt_dataset['test']['action'])
@@ -197,11 +206,26 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
             losses['angle'].update(loss_a.item(), batch_size)
             losses['angle_velocity'].update(loss_av.item(), batch_size)
             losses['total'].update(loss_total.item(), batch_size)
+            wandb.log({
+                'loss_3d_pos': loss_3d_pos.item(),
+                'loss_3d_scale': loss_3d_scale.item(),
+                'loss_3d_velocity': loss_3d_velocity.item(),
+                'loss_lv': loss_lv.item(),
+                'loss_lg': loss_lg.item(),
+                'loss_a': loss_a.item(),
+                'loss_av': loss_av.item(),
+                'loss_3d_total': loss_total.item()
+                })
         else:
             loss_2d_proj = loss_2d_weighted(predicted_3d_pos, batch_gt, conf)
             loss_total = loss_2d_proj
             losses['2d_proj'].update(loss_2d_proj.item(), batch_size)
             losses['total'].update(loss_total.item(), batch_size)
+            wandb.log({
+                'loss_2d_proj': loss_2d_proj.item(),
+                'loss_2d_total': loss_total.item()
+            })
+
         loss_total.backward()
         optimizer.step()
 
@@ -234,8 +258,8 @@ def train_with_config(args, opts):
           'persistent_workers': True
     }
 
-    train_dataset = MotionDataset3D(args, args.subset_list, 'train')
-    test_dataset = MotionDataset3D(args, args.subset_list, 'test')
+    train_dataset = MotionDataset3D(args, args.train_subset_list, 'train')
+    test_dataset = MotionDataset3D(args, args.test_subset_list, 'test')
     train_loader_3d = DataLoader(train_dataset, **trainloader_params)
     test_loader = DataLoader(test_dataset, **testloader_params)
     
@@ -252,6 +276,10 @@ def train_with_config(args, opts):
     for parameter in model_backbone.parameters():
         model_params = model_params + parameter.numel()
     print('INFO: Trainable parameter count:', model_params)
+    if torch.cuda.is_available():
+        print('Using GPU')
+    else:
+        print('Using CPU')
 
     if torch.cuda.is_available():
         model_backbone = nn.DataParallel(model_backbone)
@@ -377,6 +405,8 @@ def train_with_config(args, opts):
         e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader)
 
 if __name__ == "__main__":
+    wandb.login()
+    wandb.init(project='MotionBERT', entity="shifanzhu-umass-amherst", name='pretrainingg')
     opts = parse_args()
     set_random_seed(opts.seed)
     args = get_config(opts.config)
